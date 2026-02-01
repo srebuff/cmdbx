@@ -178,7 +178,11 @@ func run(ctx context.Context, cfg *Config) error {
 		if err := networkCollector.Start(); err != nil {
 			return fmt.Errorf("failed to start network collector: %w", err)
 		}
-		defer networkCollector.Stop()
+		defer func() {
+			if err := networkCollector.Stop(); err != nil {
+				log.Printf("Warning: failed to stop network collector: %v", err)
+			}
+		}()
 
 		if cfg.Verbose {
 			log.Printf("Network collector started (type: %s, interface: %s)",
