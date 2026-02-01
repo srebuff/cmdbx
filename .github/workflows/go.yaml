@@ -30,6 +30,16 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
+      - name: Install clang for eBPF
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm
+
+      - name: Generate eBPF code
+        run: |
+          cd probe
+          clang -O2 -g -target bpf -D__TARGET_ARCH_x86 -c bpf/counter.c -o bpf_bpfel_x86.o || echo "eBPF generation skipped"
+
       - name: Install golangci-lint
         uses: golangci/golangci-lint-action@v4
         with:
@@ -56,6 +66,16 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
+
+      - name: Install clang for eBPF
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm
+
+      - name: Generate eBPF code
+        run: |
+          cd probe
+          clang -O2 -g -target bpf -D__TARGET_ARCH_x86 -c bpf/counter.c -o bpf_bpfel_x86.o || echo "eBPF generation skipped"
 
       - name: Check formatting (main)
         run: |
@@ -84,6 +104,16 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
+
+      - name: Install clang for eBPF
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm
+
+      - name: Generate eBPF code
+        run: |
+          cd probe
+          clang -O2 -g -target bpf -D__TARGET_ARCH_x86 -c bpf/counter.c -o bpf_bpfel_x86.o || echo "eBPF generation skipped"
 
       - name: Run go vet (main)
         run: go vet ./...
