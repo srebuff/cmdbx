@@ -33,7 +33,7 @@ jobs:
       - name: Install clang for eBPF
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm libc6-dev-i386 linux-libc-dev
+          sudo apt-get install -y clang llvm libc6-dev-i386 linux-libc-dev libbpf-dev
 
       - name: Generate eBPF code
         run: |
@@ -70,7 +70,7 @@ jobs:
       - name: Install clang for eBPF
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm libc6-dev-i386 linux-libc-dev
+          sudo apt-get install -y clang llvm libc6-dev-i386 linux-libc-dev libbpf-dev
 
       - name: Generate eBPF code
         run: |
@@ -108,7 +108,7 @@ jobs:
       - name: Install clang for eBPF
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm libc6-dev-i386 linux-libc-dev
+          sudo apt-get install -y clang llvm libc6-dev-i386 linux-libc-dev libbpf-dev
 
       - name: Generate eBPF code
         run: |
@@ -138,7 +138,7 @@ jobs:
       - name: Install clang for eBPF
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm libc6-dev-i386 linux-libc-dev
+          sudo apt-get install -y clang llvm libc6-dev-i386 linux-libc-dev libbpf-dev
 
       - name: Generate eBPF code
         run: |
@@ -173,7 +173,7 @@ jobs:
       - name: Install clang for eBPF
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm libc6-dev-i386 linux-libc-dev
+          sudo apt-get install -y clang llvm libc6-dev-i386 linux-libc-dev libbpf-dev
 
       - name: Generate eBPF code
         run: |
@@ -248,7 +248,7 @@ jobs:
       - name: Install clang for eBPF
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm libc6-dev-i386 linux-libc-dev
+          sudo apt-get install -y clang llvm libc6-dev-i386 linux-libc-dev libbpf-dev
 
       - name: Generate eBPF code
         run: |
