@@ -33,12 +33,12 @@ jobs:
       - name: Install clang for eBPF
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm
+          sudo apt-get install -y clang llvm libc6-dev-i386 linux-libc-dev
 
       - name: Generate eBPF code
         run: |
           cd probe
-          clang -O2 -g -target bpf -D__TARGET_ARCH_x86 -c bpf/counter.c -o bpf_bpfel_x86.o || echo "eBPF generation skipped"
+          clang -O2 -g -target bpf -D__TARGET_ARCH_x86 -I/usr/include/x86_64-linux-gnu -c bpf/counter.c -o bpf_bpfel_x86.o
 
       - name: Install golangci-lint
         uses: golangci/golangci-lint-action@v4
@@ -70,12 +70,12 @@ jobs:
       - name: Install clang for eBPF
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm
+          sudo apt-get install -y clang llvm libc6-dev-i386 linux-libc-dev
 
       - name: Generate eBPF code
         run: |
           cd probe
-          clang -O2 -g -target bpf -D__TARGET_ARCH_x86 -c bpf/counter.c -o bpf_bpfel_x86.o || echo "eBPF generation skipped"
+          clang -O2 -g -target bpf -D__TARGET_ARCH_x86 -I/usr/include/x86_64-linux-gnu -c bpf/counter.c -o bpf_bpfel_x86.o
 
       - name: Check formatting (main)
         run: |
@@ -108,12 +108,12 @@ jobs:
       - name: Install clang for eBPF
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm
+          sudo apt-get install -y clang llvm libc6-dev-i386 linux-libc-dev
 
       - name: Generate eBPF code
         run: |
           cd probe
-          clang -O2 -g -target bpf -D__TARGET_ARCH_x86 -c bpf/counter.c -o bpf_bpfel_x86.o || echo "eBPF generation skipped"
+          clang -O2 -g -target bpf -D__TARGET_ARCH_x86 -I/usr/include/x86_64-linux-gnu -c bpf/counter.c -o bpf_bpfel_x86.o
 
       - name: Run go vet (main)
         run: go vet ./...
@@ -138,12 +138,12 @@ jobs:
       - name: Install clang for eBPF
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm
+          sudo apt-get install -y clang llvm libc6-dev-i386 linux-libc-dev
 
       - name: Generate eBPF code
         run: |
           cd probe
-          clang -O2 -g -target bpf -D__TARGET_ARCH_x86 -c bpf/counter.c -o bpf_bpfel_x86.o || echo "eBPF generation skipped"
+          clang -O2 -g -target bpf -D__TARGET_ARCH_x86 -I/usr/include/x86_64-linux-gnu -c bpf/counter.c -o bpf_bpfel_x86.o
 
       - name: Download dependencies
         run: |
@@ -173,12 +173,12 @@ jobs:
       - name: Install clang for eBPF
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm
+          sudo apt-get install -y clang llvm libc6-dev-i386 linux-libc-dev
 
       - name: Generate eBPF code
         run: |
           cd probe
-          clang -O2 -g -target bpf -D__TARGET_ARCH_x86 -c bpf/counter.c -o bpf_bpfel_x86.o || echo "eBPF generation skipped"
+          clang -O2 -g -target bpf -D__TARGET_ARCH_x86 -I/usr/include/x86_64-linux-gnu -c bpf/counter.c -o bpf_bpfel_x86.o
 
       - name: Download dependencies
         run: |
@@ -248,12 +248,12 @@ jobs:
       - name: Install clang for eBPF
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm
+          sudo apt-get install -y clang llvm libc6-dev-i386 linux-libc-dev
 
       - name: Generate eBPF code
         run: |
           cd probe
-          clang -O2 -g -target bpf -D__TARGET_ARCH_x86 -c bpf/counter.c -o bpf_bpfel_x86.o || echo "eBPF generation skipped"
+          clang -O2 -g -target bpf -D__TARGET_ARCH_x86 -I/usr/include/x86_64-linux-gnu -c bpf/counter.c -o bpf_bpfel_x86.o
 
       - name: Get version info
         id: version
