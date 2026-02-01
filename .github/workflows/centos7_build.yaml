@@ -1,0 +1,165 @@
+name: Build for CentOS 7
+
+on:
+  push:
+    branches: [main, master, develop]
+    tags:
+      - 'v*'
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'probe/**'
+      - '.github/Dockerfile.centos7'
+      - '.github/workflows/centos7_build.yaml'
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - static
+          - dynamic
+          - both
+
+env:
+  IMAGE_NAME: agent_cmdb-builder-centos7
+  DOCKERFILE: .github/Dockerfile.centos7
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # For git describe
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Get version info
+        id: version
+        run: |
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
+          BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S')
+          GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "build_time=${BUILD_TIME}" >> $GITHUB_OUTPUT
+          echo "git_commit=${GIT_COMMIT}" >> $GITHUB_OUTPUT
+          echo "Version: ${VERSION}"
+          echo "Build Time: ${BUILD_TIME}"
+          echo "Git Commit: ${GIT_COMMIT}"
+
+      - name: Determine build type
+        id: build_type
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "type=${{ inputs.build_type }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref_type }}" == "tag" ]; then
+            echo "type=both" >> $GITHUB_OUTPUT
+          else
+            echo "type=static" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build static binary
+        if: steps.build_type.outputs.type == 'static' || steps.build_type.outputs.type == 'both'
+        run: |
+          echo "Building static binary (CGO_ENABLED=0)..."
+          docker build \
+            --target runtime-static \
+            --build-arg VERSION="${{ steps.version.outputs.version }}" \
+            --build-arg BUILD_TIME="${{ steps.version.outputs.build_time }}" \
+            --build-arg GIT_COMMIT="${{ steps.version.outputs.git_commit }}" \
+            --build-arg CGO_ENABLED=0 \
+            -t "${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}-static" \
+            -f ${{ env.DOCKERFILE }} .
+          
+          # Extract binary
+          docker create --name extract-static "${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}-static"
+          docker cp extract-static:/usr/local/bin/agent_cmdb ./agent_cmdb_centos7_static
+          docker rm extract-static
+          
+          # Verify
+          file ./agent_cmdb_centos7_static
+          chmod +x ./agent_cmdb_centos7_static
+          ./agent_cmdb_centos7_static --version || true
+
+      - name: Build dynamic binary
+        if: steps.build_type.outputs.type == 'dynamic' || steps.build_type.outputs.type == 'both'
+        run: |
+          echo "Building dynamic binary (CGO_ENABLED=1)..."
+          docker build \
+            --target runtime-dynamic \
+            --build-arg VERSION="${{ steps.version.outputs.version }}" \
+            --build-arg BUILD_TIME="${{ steps.version.outputs.build_time }}" \
+            --build-arg GIT_COMMIT="${{ steps.version.outputs.git_commit }}" \
+            --build-arg CGO_ENABLED=1 \
+            -t "${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}-dynamic" \
+            -f ${{ env.DOCKERFILE }} .
+          
+          # Extract binary
+          docker create --name extract-dynamic "${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}-dynamic"
+          docker cp extract-dynamic:/usr/local/bin/agent_cmdb ./agent_cmdb_centos7_dynamic
+          docker rm extract-dynamic
+          
+          # Verify
+          file ./agent_cmdb_centos7_dynamic
+          chmod +x ./agent_cmdb_centos7_dynamic
+
+      - name: Upload static binary
+        if: steps.build_type.outputs.type == 'static' || steps.build_type.outputs.type == 'both'
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent_cmdb_centos7_static
+          path: agent_cmdb_centos7_static
+          retention-days: 30
+
+      - name: Upload dynamic binary
+        if: steps.build_type.outputs.type == 'dynamic' || steps.build_type.outputs.type == 'both'
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent_cmdb_centos7_dynamic
+          path: agent_cmdb_centos7_dynamic
+          retention-days: 30
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+      - name: Download static artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: agent_cmdb_centos7_static
+
+      - name: Download dynamic artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: agent_cmdb_centos7_dynamic
+
+      - name: Create checksums
+        run: |
+          sha256sum agent_cmdb_centos7_static > agent_cmdb_centos7_static.sha256
+          sha256sum agent_cmdb_centos7_dynamic > agent_cmdb_centos7_dynamic.sha256
+          cat *.sha256
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            agent_cmdb_centos7_static
+            agent_cmdb_centos7_static.sha256
+            agent_cmdb_centos7_dynamic
+            agent_cmdb_centos7_dynamic.sha256
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

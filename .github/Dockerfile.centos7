@@ -1,0 +1,119 @@
+# Multi-stage Dockerfile for building agent_cmdb on CentOS 7
+# Location: .github/Dockerfile.centos7 (tracked in git for CI/CD)
+
+# =============================================================================
+# Stage 1: Builder image with all build dependencies
+# =============================================================================
+FROM centos:7 AS builder
+
+# Use vault for CentOS 7 EOL repos
+RUN sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*.repo && \
+    sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*.repo
+
+# Install EPEL and build dependencies
+RUN yum install -y epel-release && \
+    yum clean all && \
+    yum install -y \
+        make \
+        git \
+        libpcap-devel \
+        clang \
+        llvm \
+        kernel-headers \
+    && yum clean all
+
+# Install Go 1.21+ (CentOS 7's golang package is too old)
+ARG GO_VERSION=1.21.6
+RUN curl -fsSL https://golang.org/dl/go${GO_VERSION}.linux-amd64.tar.gz | tar -C /usr/local -xzf - && \
+    ln -sf /usr/local/go/bin/go /usr/local/bin/go && \
+    ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+
+# Set Go environment
+ENV PATH="/usr/local/go/bin:${PATH}"
+ENV GOPATH="/go"
+
+WORKDIR /app
+
+# Copy go.mod files first for better layer caching
+COPY go.mod go.sum ./
+COPY probe/go.mod probe/go.sum ./probe/
+
+# Download dependencies (cached unless go.mod changes)
+RUN go mod download && cd probe && go mod download
+
+# Copy source code
+COPY . .
+
+# Build arguments for version info
+ARG VERSION=dev
+ARG BUILD_TIME
+ARG GIT_COMMIT
+ARG CGO_ENABLED=0
+
+# Generate eBPF code (kernel 5.4 compatible - no atomic instructions)
+RUN cd probe && \
+    if command -v clang >/dev/null 2>&1; then \
+        clang -O2 -target bpf -D__TARGET_ARCH_x86 \
+            -Wno-unused-value \
+            -Wno-pointer-sign \
+            -Wno-compare-distinct-pointer-types \
+            -c bpf/counter.c -o bpf_bpfel_x86.o || echo "eBPF generation skipped"; \
+    fi
+
+# Build the application
+RUN CGO_ENABLED=${CGO_ENABLED} go build -v \
+    -ldflags "-X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.GitCommit=${GIT_COMMIT}" \
+    -o /app/agent_cmdb .
+
+# =============================================================================
+# Stage 2: Minimal runtime image (for static builds)
+# =============================================================================
+FROM centos:7 AS runtime-static
+
+LABEL maintainer="gops" \
+      description="agent_cmdb - CMDB Agent for process and network monitoring"
+
+# Create non-root user for security
+RUN useradd -r -s /bin/false agent
+
+# Copy the static binary
+COPY --from=builder /app/agent_cmdb /usr/local/bin/agent_cmdb
+
+# Set ownership
+RUN chown agent:agent /usr/local/bin/agent_cmdb
+
+USER agent
+ENTRYPOINT ["/usr/local/bin/agent_cmdb"]
+CMD ["--help"]
+
+# =============================================================================
+# Stage 3: Runtime with libpcap (for dynamic builds with gopacket)
+# =============================================================================
+FROM centos:7 AS runtime-dynamic
+
+# Use vault repos
+RUN sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*.repo && \
+    sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*.repo
+
+# Install runtime dependencies only
+RUN yum install -y libpcap && yum clean all
+
+LABEL maintainer="gops" \
+      description="agent_cmdb - CMDB Agent with gopacket support"
+
+# Create non-root user
+RUN useradd -r -s /bin/false agent
+
+# Copy the binary
+COPY --from=builder /app/agent_cmdb /usr/local/bin/agent_cmdb
+
+RUN chown agent:agent /usr/local/bin/agent_cmdb
+
+USER agent
+ENTRYPOINT ["/usr/local/bin/agent_cmdb"]
+CMD ["--help"]
+
+# =============================================================================
+# Default target: static runtime (smallest image)
+# =============================================================================
+FROM runtime-static

@@ -27,4 +27,6 @@ Thumbs.db
 # Temporary
 tmp/
 temp/
+
+# Local build scripts (not needed in git, Dockerfile embedded in workflow)
 compose/
