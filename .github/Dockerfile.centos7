@@ -34,15 +34,11 @@ ENV GOPATH="/go"
 
 WORKDIR /app
 
-# Copy go.mod files first for better layer caching
-COPY go.mod go.sum ./
-COPY probe/go.mod probe/go.sum ./probe/
-
-# Download dependencies (cached unless go.mod changes)
-RUN go mod download && cd probe && go mod download
-
-# Copy source code
+# Copy all source code (needed due to local replace directive in go.mod)
 COPY . .
+
+# Download dependencies
+RUN cd probe && go mod download && cd .. && go mod download
 
 # Build arguments for version info
 ARG VERSION=dev
