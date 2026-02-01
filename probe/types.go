@@ -13,9 +13,9 @@ type Service struct {
 	InstanceIP   string   `json:"instance_ip"`
 	Name         string   `json:"name"`
 	BinPath      string   `json:"bin_path"`
-	StartMode    string   `json:"start_mode"`    // k8s, docker, systemd, native
-	DetailCmd    string   `json:"detail_cmd"`    // hash of full cmd
-	ContainerID  string   `json:"container_id"`  // Docker container ID (short)
+	StartMode    string   `json:"start_mode"`   // k8s, docker, systemd, native
+	DetailCmd    string   `json:"detail_cmd"`   // hash of full cmd
+	ContainerID  string   `json:"container_id"` // Docker container ID (short)
 	PID          int32    `json:"pid"`
 	RootPID      int32    `json:"root_pid"`
 	ListenPorts  []uint32 `json:"listen_ports"`
