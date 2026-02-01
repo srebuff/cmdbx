@@ -1,0 +1,30 @@
+# Build artifacts
+build/
+agent_cmdb
+agent_cmdb_*
+*.exe
+
+# Coverage reports
+coverage/
+*.out
+
+# eBPF generated files (keep bpf_bpfel_x86.o in probe/ for builds without clang)
+# probe/bpf_bpfel_x86.o
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary
+tmp/
+temp/
+compose/

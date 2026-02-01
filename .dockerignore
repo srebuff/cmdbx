@@ -1,0 +1,34 @@
+# Build artifacts
+build/
+coverage/
+*.o
+agent_cmdb
+agent_cmdb_*
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+
+# Documentation (not needed for build)
+docs/
+
+# Test artifacts
+*.test
+*.out
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.log
