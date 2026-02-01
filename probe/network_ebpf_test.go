@@ -119,7 +119,7 @@ func TestEBPFCollectorStartRequiresRoot(t *testing.T) {
 		t.Logf("Start() error (expected without root): %v", err)
 	} else {
 		// If it succeeded, make sure to stop it
-		c.Stop()
+		_ = c.Stop()
 		t.Log("Start() succeeded - running as root?")
 	}
 }

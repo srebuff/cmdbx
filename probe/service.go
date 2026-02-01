@@ -172,6 +172,7 @@ func (c *DefaultServiceCollector) Collect() ([]Service, error) {
 				BinPath:     rootData.exe,
 				DetailCmd:   hashDetailCmd(detailCmd),
 				StartMode:   startMode,
+				ContainerID: getContainerID(rootPid),
 				ListenPorts: []uint32{},
 				Timestamp:   timestamp,
 			}
@@ -353,10 +354,10 @@ func isThread(pid int32) bool {
 	var tgid, pidVal int
 	for _, line := range strings.Split(string(data), "\n") {
 		if strings.HasPrefix(line, "Tgid:") {
-			fmt.Sscanf(line, "Tgid:\t%d", &tgid)
+			_, _ = fmt.Sscanf(line, "Tgid:\t%d", &tgid)
 		}
 		if strings.HasPrefix(line, "Pid:") {
-			fmt.Sscanf(line, "Pid:\t%d", &pidVal)
+			_, _ = fmt.Sscanf(line, "Pid:\t%d", &pidVal)
 		}
 	}
 
@@ -637,8 +638,14 @@ func FormatLineProtocol(svc Service) string {
 	binPath := escapeTagValue(svc.BinPath)
 	detailCmd := escapeTagValue(svc.DetailCmd)
 
+	// Build container_id tag only if present
+	containerTag := ""
+	if svc.ContainerID != "" {
+		containerTag = ",container_id=" + escapeTagValue(svc.ContainerID)
+	}
+
 	return fmt.Sprintf(
-		"services,instance_id=%s,name=%s,instance_ip=%s,bin_path=%s,start_mode=%s,detail_cmd=%s "+
+		"services,instance_id=%s,name=%s,instance_ip=%s,bin_path=%s,start_mode=%s,detail_cmd=%s%s "+
 			"pid=%di,listen_ports=\"%s\",cpu_pct=%.2f,mem_bytes=%di,io_read_bytes=%di,io_write_bytes=%di,"+
 			"io_read_mb=%.2f,io_write_mb=%.2f,io_read_kbps=%.2f,io_write_kbps=%.2f,root_pid=%di,child_count=%di %d",
 		svc.InstanceID,
@@ -647,6 +654,7 @@ func FormatLineProtocol(svc Service) string {
 		binPath,
 		svc.StartMode,
 		detailCmd,
+		containerTag,
 		svc.PID,
 		portsStr,
 		svc.CPUPercent,

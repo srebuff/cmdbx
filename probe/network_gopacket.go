@@ -120,7 +120,8 @@ func (c *GoPacketCollector) captureLoop() {
 	defer func() {
 		// Recover from any panics in packet processing
 		if r := recover(); r != nil {
-			// Log but don't crash
+			// Recovered from panic, continue gracefully
+			_ = r // Silence staticcheck SA9003
 		}
 	}()
 
@@ -176,13 +177,19 @@ func (c *GoPacketCollector) processPacket(packet gopacket.Packet) {
 
 	// Handle IPv4
 	if ipv4Layer := packet.Layer(layers.LayerTypeIPv4); ipv4Layer != nil {
-		ipv4, _ := ipv4Layer.(*layers.IPv4)
+		ipv4, ok := ipv4Layer.(*layers.IPv4)
+		if !ok || ipv4 == nil {
+			return
+		}
 		srcIP = ipv4.SrcIP.String()
 		dstIP = ipv4.DstIP.String()
 		protocol = ProtocolNumberToName(uint8(ipv4.Protocol))
 	} else if ipv6Layer := packet.Layer(layers.LayerTypeIPv6); ipv6Layer != nil {
 		// Handle IPv6
-		ipv6, _ := ipv6Layer.(*layers.IPv6)
+		ipv6, ok := ipv6Layer.(*layers.IPv6)
+		if !ok || ipv6 == nil {
+			return
+		}
 		srcIP = ipv6.SrcIP.String()
 		dstIP = ipv6.DstIP.String()
 		protocol = ProtocolNumberToName(uint8(ipv6.NextHeader))
@@ -194,13 +201,17 @@ func (c *GoPacketCollector) processPacket(packet gopacket.Packet) {
 
 	// Get transport layer ports
 	if tcpLayer := packet.Layer(layers.LayerTypeTCP); tcpLayer != nil {
-		tcp, _ := tcpLayer.(*layers.TCP)
-		srcPort = uint16(tcp.SrcPort)
-		dstPort = uint16(tcp.DstPort)
+		tcp, ok := tcpLayer.(*layers.TCP)
+		if ok && tcp != nil {
+			srcPort = uint16(tcp.SrcPort)
+			dstPort = uint16(tcp.DstPort)
+		}
 	} else if udpLayer := packet.Layer(layers.LayerTypeUDP); udpLayer != nil {
-		udp, _ := udpLayer.(*layers.UDP)
-		srcPort = uint16(udp.SrcPort)
-		dstPort = uint16(udp.DstPort)
+		udp, ok := udpLayer.(*layers.UDP)
+		if ok && udp != nil {
+			srcPort = uint16(udp.SrcPort)
+			dstPort = uint16(udp.DstPort)
+		}
 	}
 
 	// Record traffic

@@ -2,6 +2,7 @@ package probe
 
 import (
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -408,5 +409,154 @@ func TestCollectWithZeroDuration(t *testing.T) {
 		if svc.IOReadKBps != 0 || svc.IOWriteKBps != 0 {
 			t.Log("IO rates should be 0 when duration is 0")
 		}
+	}
+}
+
+func TestGetContainerID(t *testing.T) {
+	tests := []struct {
+		name string
+		pid  int32
+	}{
+		{"invalid pid -1", -1},
+		{"invalid pid 0", 0},
+		{"non-existent pid", 999999999},
+		{"current process", int32(os.Getpid())},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := getContainerID(tt.pid)
+			// For invalid/non-existent PIDs, should return empty string
+			if tt.pid <= 0 || tt.pid == 999999999 {
+				if result != "" {
+					t.Errorf("getContainerID(%d) = %q, want empty string", tt.pid, result)
+				}
+			}
+			// For current process, result depends on environment
+			// In container: returns 12-char ID, otherwise empty
+			if tt.pid == int32(os.Getpid()) {
+				if result != "" && len(result) != 12 {
+					t.Errorf("getContainerID(%d) = %q, want 12-char ID or empty", tt.pid, result)
+				}
+			}
+		})
+	}
+}
+
+func TestGetContainerIDRegexPattern(t *testing.T) {
+	// Test the regex pattern used in getContainerID
+	// Container IDs are 64 hex characters (a-f, 0-9)
+	testCases := []struct {
+		name     string
+		cgroup   string
+		expected string
+	}{
+		{
+			name:     "docker cgroup v1",
+			cgroup:   "12:pids:/docker/a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+			expected: "a1b2c3d4e5f6",
+		},
+		{
+			name:     "docker cgroup v2",
+			cgroup:   "0::/system.slice/docker-a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2.scope",
+			expected: "a1b2c3d4e5f6",
+		},
+		{
+			name:     "no container",
+			cgroup:   "12:pids:/user.slice/user-1000.slice/session-1.scope",
+			expected: "",
+		},
+		{
+			name:     "kubernetes pod without docker",
+			cgroup:   "11:memory:/kubepods/burstable/pod123/containerd-a1b2c3d4e5f6",
+			expected: "",
+		},
+		{
+			name:     "empty cgroup",
+			cgroup:   "",
+			expected: "",
+		},
+	}
+
+	re := regexp.MustCompile(`docker[/-]([a-f0-9]{64})`)
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			matches := re.FindStringSubmatch(tc.cgroup)
+			var result string
+			if len(matches) > 1 {
+				result = matches[1][:12] // Short ID
+			}
+			if result != tc.expected {
+				t.Errorf("regex match for %q = %q, want %q", tc.cgroup, result, tc.expected)
+			}
+		})
+	}
+}
+
+func TestFormatLineProtocolWithContainerID(t *testing.T) {
+	svc := Service{
+		InstanceID:   "test-node",
+		InstanceIP:   "192.168.1.100",
+		Name:         "nginx",
+		BinPath:      "/usr/sbin/nginx",
+		StartMode:    "docker",
+		DetailCmd:    "abc123def456",
+		ContainerID:  "abc123def456",
+		PID:          1234,
+		RootPID:      1234,
+		ListenPorts:  []uint32{80, 443},
+		CPUPercent:   2.5,
+		MemBytes:     104857600,
+		IOReadBytes:  1048576,
+		IOWriteBytes: 524288,
+		IOReadMB:     1.0,
+		IOWriteMB:    0.5,
+		IOReadKBps:   10.0,
+		IOWriteKBps:  5.0,
+		ChildCount:   4,
+		Timestamp:    1234567890,
+	}
+
+	line := FormatLineProtocol(svc)
+
+	// Check container_id tag is included
+	if !strings.Contains(line, "container_id=abc123def456") {
+		t.Error("Line should contain container_id tag")
+	}
+	if !strings.Contains(line, "start_mode=docker") {
+		t.Error("Line should contain start_mode=docker")
+	}
+}
+
+func TestFormatLineProtocolWithoutContainerID(t *testing.T) {
+	svc := Service{
+		InstanceID:   "test-node",
+		InstanceIP:   "192.168.1.100",
+		Name:         "nginx",
+		BinPath:      "/usr/sbin/nginx",
+		StartMode:    "systemd",
+		DetailCmd:    "abc123def456",
+		ContainerID:  "", // Empty - not in container
+		PID:          1234,
+		RootPID:      1234,
+		ListenPorts:  []uint32{80},
+		CPUPercent:   2.5,
+		MemBytes:     104857600,
+		IOReadBytes:  1048576,
+		IOWriteBytes: 524288,
+		IOReadMB:     1.0,
+		IOWriteMB:    0.5,
+		IOReadKBps:   10.0,
+		IOWriteKBps:  5.0,
+		ChildCount:   4,
+		Timestamp:    1234567890,
+	}
+
+	line := FormatLineProtocol(svc)
+
+	// Check container_id tag is NOT included when empty
+	if strings.Contains(line, "container_id=") {
+		t.Error("Line should NOT contain container_id tag when ContainerID is empty")
 	}
 }
