@@ -41,17 +41,17 @@ jobs:
           clang -O2 -g -target bpf -D__TARGET_ARCH_x86 -I/usr/include/x86_64-linux-gnu -c bpf/counter.c -o bpf_bpfel_x86.o
 
       - name: Install golangci-lint
-        uses: golangci/golangci-lint-action@v4
+        uses: golangci/golangci-lint-action@v6
         with:
           version: latest
-          args: --timeout=5m
+          args: --timeout=5m --out-format=colored-line-number
           working-directory: .
 
       - name: Lint probe module
-        uses: golangci/golangci-lint-action@v4
+        uses: golangci/golangci-lint-action@v6
         with:
           version: latest
-          args: --timeout=5m
+          args: --timeout=5m --out-format=colored-line-number
           working-directory: ./probe
 
   fmt:

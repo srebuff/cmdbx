@@ -35,7 +35,7 @@ func TestNewGoPacketCollectorValidInterface(t *testing.T) {
 
 	iface := collector.GetInterface()
 	if iface == nil {
-		t.Error("GetInterface() should return non-nil")
+		t.Fatal("GetInterface() should return non-nil")
 	}
 	if iface.Name != ifaces[0] {
 		t.Errorf("GetInterface().Name = %s, want %s", iface.Name, ifaces[0])
