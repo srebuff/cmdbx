@@ -1,17 +1,13 @@
 name: Build for CentOS 7
 
 on:
+  # Tag pushes always trigger (for releases) - no paths filter
   push:
-    branches: [main, master, develop]
     tags:
       - 'v*'
-    paths:
-      - '**.go'
-      - 'go.mod'
-      - 'go.sum'
-      - 'probe/**'
-      - '.github/Dockerfile.centos7'
-      - '.github/workflows/*.yaml'
+    branches: [main, master, develop]
+  # NOTE: Removed paths filter because it blocks tag triggers
+  # Tags don't have associated file changes, so paths filter prevents them from triggering
   pull_request:
     branches: [main, master]
   workflow_dispatch:
