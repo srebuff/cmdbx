@@ -1,0 +1,273 @@
+name: Go CI
+
+on:
+  push:
+    branches: [main, master, develop]
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'probe/**'
+      - '.github/workflows/*.yaml'
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  GO_VERSION: '1.21'
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@v4
+        with:
+          version: latest
+          args: --timeout=5m
+          working-directory: .
+
+      - name: Lint probe module
+        uses: golangci/golangci-lint-action@v4
+        with:
+          version: latest
+          args: --timeout=5m
+          working-directory: ./probe
+
+  fmt:
+    name: Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Check formatting (main)
+        run: |
+          if [ -n "$(go fmt ./...)" ]; then
+            echo "Code is not formatted. Please run 'go fmt ./...'"
+            exit 1
+          fi
+
+      - name: Check formatting (probe)
+        run: |
+          cd probe
+          if [ -n "$(go fmt ./...)" ]; then
+            echo "Probe code is not formatted. Please run 'cd probe && go fmt ./...'"
+            exit 1
+          fi
+
+  vet:
+    name: Vet
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run go vet (main)
+        run: go vet ./...
+
+      - name: Run go vet (probe)
+        run: cd probe && go vet ./...
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: [fmt, vet]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install clang for eBPF
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm
+
+      - name: Generate eBPF code
+        run: |
+          cd probe
+          clang -O2 -g -target bpf -D__TARGET_ARCH_x86 -c bpf/counter.c -o bpf_bpfel_x86.o || echo "eBPF generation skipped"
+
+      - name: Download dependencies
+        run: |
+          go mod download
+          cd probe && go mod download
+
+      - name: Run tests (main)
+        run: go test -race -v ./...
+
+      - name: Run tests (probe)
+        run: cd probe && go test -race -v ./...
+
+  coverage:
+    name: Test Coverage
+    runs-on: ubuntu-latest
+    needs: [fmt, vet]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install clang for eBPF
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm
+
+      - name: Generate eBPF code
+        run: |
+          cd probe
+          clang -O2 -g -target bpf -D__TARGET_ARCH_x86 -c bpf/counter.c -o bpf_bpfel_x86.o || echo "eBPF generation skipped"
+
+      - name: Download dependencies
+        run: |
+          go mod download
+          cd probe && go mod download
+
+      - name: Run tests with coverage (main)
+        run: |
+          go test -race -coverprofile=coverage-main.out -covermode=atomic ./...
+
+      - name: Run tests with coverage (probe)
+        run: |
+          cd probe
+          go test -race -coverprofile=coverage-probe.out -covermode=atomic ./...
+
+      - name: Merge coverage reports
+        run: |
+          # Install gocovmerge if needed for merging
+          echo "mode: atomic" > coverage.out
+          grep -h -v "mode:" coverage-main.out >> coverage.out 2>/dev/null || true
+          grep -h -v "mode:" probe/coverage-probe.out >> coverage.out 2>/dev/null || true
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.out,./coverage-main.out,./probe/coverage-probe.out
+          flags: unittests
+          fail_ci_if_error: false
+        continue-on-error: true
+
+      - name: Display coverage summary
+        run: |
+          echo "=== Main module coverage ==="
+          go tool cover -func=coverage-main.out | tail -1 || true
+          echo ""
+          echo "=== Probe module coverage ==="
+          cd probe && go tool cover -func=coverage-probe.out | tail -1 || true
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            coverage-main.out
+            probe/coverage-probe.out
+            coverage.out
+          retention-days: 7
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [test]
+    strategy:
+      matrix:
+        goos: [linux]
+        goarch: [amd64, arm64]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install clang for eBPF
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm
+
+      - name: Generate eBPF code
+        run: |
+          cd probe
+          clang -O2 -g -target bpf -D__TARGET_ARCH_x86 -c bpf/counter.c -o bpf_bpfel_x86.o || echo "eBPF generation skipped"
+
+      - name: Get version info
+        id: version
+        run: |
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
+          BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S')
+          GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "build_time=${BUILD_TIME}" >> $GITHUB_OUTPUT
+          echo "git_commit=${GIT_COMMIT}" >> $GITHUB_OUTPUT
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          go build -v \
+            -ldflags "-X main.Version=${{ steps.version.outputs.version }} -X main.BuildTime=${{ steps.version.outputs.build_time }} -X main.GitCommit=${{ steps.version.outputs.git_commit }}" \
+            -o agent_cmdb-${{ matrix.goos }}-${{ matrix.goarch }} .
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent_cmdb-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: agent_cmdb-${{ matrix.goos }}-${{ matrix.goarch }}
+          retention-days: 7
+
+  # Summary job that requires all others to pass
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-latest
+    needs: [lint, fmt, vet, test, coverage, build]
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [ "${{ needs.lint.result }}" != "success" ] || \
+             [ "${{ needs.fmt.result }}" != "success" ] || \
+             [ "${{ needs.vet.result }}" != "success" ] || \
+             [ "${{ needs.test.result }}" != "success" ] || \
+             [ "${{ needs.coverage.result }}" != "success" ] || \
+             [ "${{ needs.build.result }}" != "success" ]; then
+            echo "One or more jobs failed"
+            exit 1
+          fi
+          echo "All CI jobs passed successfully!"

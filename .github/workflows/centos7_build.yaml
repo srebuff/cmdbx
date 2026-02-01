@@ -11,7 +11,7 @@ on:
       - 'go.sum'
       - 'probe/**'
       - '.github/Dockerfile.centos7'
-      - '.github/workflows/centos7_build.yaml'
+      - '.github/workflows/*.yaml'
   pull_request:
     branches: [main, master]
   workflow_dispatch:
