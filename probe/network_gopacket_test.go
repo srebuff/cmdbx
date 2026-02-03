@@ -2,6 +2,7 @@ package probe
 
 import (
 	"testing"
+	"time"
 )
 
 func TestNewGoPacketCollectorInvalidInterface(t *testing.T) {
@@ -60,6 +61,7 @@ func TestNewGoPacketCollectorWithOptions(t *testing.T) {
 		WithFrameSize(8192),
 		WithBlockSize(8192*64),
 		WithNumBlocks(64),
+		WithPollTimeout(250*time.Millisecond),
 	)
 	if err != nil {
 		t.Fatalf("NewGoPacketCollector() error = %v", err)
@@ -73,6 +75,9 @@ func TestNewGoPacketCollectorWithOptions(t *testing.T) {
 	}
 	if collector.numBlocks != 64 {
 		t.Errorf("numBlocks = %d, want 64", collector.numBlocks)
+	}
+	if collector.pollTimeout != 250*time.Millisecond {
+		t.Errorf("pollTimeout = %s, want %s", collector.pollTimeout, 250*time.Millisecond)
 	}
 }
 
@@ -102,6 +107,9 @@ func TestGoPacketCollectorDefaultValues(t *testing.T) {
 	}
 	if collector.numBlocks != 128 {
 		t.Errorf("default numBlocks = %d, want 128", collector.numBlocks)
+	}
+	if collector.pollTimeout != 100*time.Millisecond {
+		t.Errorf("default pollTimeout = %s, want %s", collector.pollTimeout, 100*time.Millisecond)
 	}
 }
 

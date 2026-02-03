@@ -1,7 +1,7 @@
 # Makefile for agent_cmdb
 # CI/CD automation targets
 
-.PHONY: all build build-linux test test-verbose test-coverage lint fmt vet clean deps tidy check generate help
+.PHONY: all build build-linux test test-verbose test-coverage lint fmt vet clean deps tidy check generate generate-test help
 
 # Go parameters
 GOCMD=go
@@ -38,6 +38,17 @@ generate:
 		echo "clang not found, skipping eBPF code generation"; \
 	fi
 
+# Generate eBPF code (required for tests)
+generate-test:
+	@echo "==> Generating eBPF code for tests..."
+	@if command -v clang >/dev/null 2>&1; then \
+		cd probe && clang -O2 -g -target bpf -c bpf/counter.c -o bpf_bpfel_x86.o; \
+		echo "eBPF code generated"; \
+	else \
+		echo "clang not found; install clang to run tests"; \
+		exit 1; \
+	fi
+
 # Build the binary
 build: generate
 	@echo "==> Building $(BINARY_NAME)..."
@@ -57,20 +68,20 @@ build-static:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GOBUILD) -v -ldflags "$(LDFLAGS) -extldflags '-static'" -o $(BUILD_DIR)/$(BINARY_NAME)-static .
 
 # Run tests (all modules)
-test:
+test: generate-test
 	@echo "==> Running tests..."
 	$(GOTEST) -race ./...
 	@echo "==> Running probe tests..."
 	cd probe && $(GOTEST) -race ./...
 
 # Run tests with verbose output
-test-verbose:
+test-verbose: generate-test
 	@echo "==> Running tests (verbose)..."
 	$(GOTEST) -v -race ./...
 	cd probe && $(GOTEST) -v -race ./...
 
 # Run tests with coverage
-test-coverage:
+test-coverage: generate-test
 	@echo "==> Running tests with coverage..."
 	@mkdir -p coverage
 	$(GOTEST) -v -race -coverprofile=coverage/main.out -covermode=atomic ./...
@@ -78,7 +89,7 @@ test-coverage:
 	@echo "==> Coverage reports generated in coverage/"
 
 # Run short tests only (skip integration tests)
-test-short:
+test-short: generate-test
 	@echo "==> Running short tests..."
 	$(GOTEST) -short -race ./...
 	cd probe && $(GOTEST) -short -race ./...

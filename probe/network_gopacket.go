@@ -30,6 +30,7 @@ type GoPacketCollector struct {
 	frameSize int
 	blockSize int
 	numBlocks int
+	pollTimeout time.Duration
 }
 
 // GoPacketCollectorOption is a functional option for GoPacketCollector
@@ -56,6 +57,13 @@ func WithNumBlocks(n int) GoPacketCollectorOption {
 	}
 }
 
+// WithPollTimeout sets the poll timeout for AF_PACKET reads.
+func WithPollTimeout(d time.Duration) GoPacketCollectorOption {
+	return func(c *GoPacketCollector) {
+		c.pollTimeout = d
+	}
+}
+
 // NewGoPacketCollector creates a new gopacket-based network collector
 func NewGoPacketCollector(parent *NetworkTrafficCollector, ifaceName string, opts ...GoPacketCollectorOption) (*GoPacketCollector, error) {
 	// Get interface
@@ -73,6 +81,7 @@ func NewGoPacketCollector(parent *NetworkTrafficCollector, ifaceName string, opt
 		frameSize: 4096,
 		blockSize: 4096 * 128, // 512KB blocks
 		numBlocks: 128,        // Total ~64MB ring buffer
+		pollTimeout: 100 * time.Millisecond,
 	}
 
 	// Apply options
@@ -98,6 +107,7 @@ func (c *GoPacketCollector) Start() error {
 		afpacket.OptFrameSize(c.frameSize),
 		afpacket.OptBlockSize(c.blockSize),
 		afpacket.OptNumBlocks(c.numBlocks),
+		afpacket.OptPollTimeout(c.pollTimeout),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create AF_PACKET handle: %w", err)
@@ -117,6 +127,11 @@ func (c *GoPacketCollector) Start() error {
 // captureLoop reads packets from AF_PACKET and records statistics
 func (c *GoPacketCollector) captureLoop() {
 	defer close(c.stoppedCh)
+	defer func() {
+		if c.handle != nil {
+			c.handle.Close()
+		}
+	}()
 	defer func() {
 		// Recover from any panics in packet processing
 		if r := recover(); r != nil {
@@ -231,11 +246,6 @@ func (c *GoPacketCollector) Stop() error {
 
 	// Signal stop
 	close(c.stopCh)
-
-	// Close handle to unblock the capture loop
-	if c.handle != nil {
-		c.handle.Close()
-	}
 
 	// Wait for capture loop to finish (with timeout)
 	select {
