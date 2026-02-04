@@ -6,6 +6,7 @@ package probe
 import (
 	"fmt"
 	"net"
+	"time"
 )
 
 // GoPacketCollector is a stub for non-Linux systems
@@ -28,6 +29,11 @@ func WithBlockSize(size int) GoPacketCollectorOption {
 
 // WithNumBlocks is a no-op on non-Linux systems
 func WithNumBlocks(n int) GoPacketCollectorOption {
+	return func(c *GoPacketCollector) {}
+}
+
+// WithPollTimeout is a no-op on non-Linux systems
+func WithPollTimeout(d time.Duration) GoPacketCollectorOption {
 	return func(c *GoPacketCollector) {}
 }
 

@@ -46,6 +46,7 @@ type Config struct {
 	NetworkInterval  time.Duration
 	NetworkInterface string
 	CollectorType    string // auto, ebpf, gopacket
+	CollectInterval  time.Duration
 
 	// Output options
 	OutputFile string
@@ -102,6 +103,7 @@ func parseFlags() *Config {
 	flag.DurationVar(&cfg.NetworkInterval, "network-interval", 30*time.Second, "Network stats collection interval")
 	flag.StringVar(&cfg.NetworkInterface, "interface", "", "Network interface (default: auto-detect)")
 	flag.StringVar(&cfg.CollectorType, "collector", "auto", "Network collector: auto, ebpf, gopacket")
+	flag.DurationVar(&cfg.CollectInterval, "collect-interval", 0, "Shared collection interval for services and network (0 = disabled)")
 
 	// Output options
 	flag.StringVar(&cfg.OutputFormat, "format", "line", "Output format: line, json")
@@ -122,6 +124,8 @@ func parseFlags() *Config {
 func run(ctx context.Context, cfg *Config) error {
 	var output *os.File
 	var err error
+
+	applyCollectInterval(cfg)
 
 	// Setup output
 	if cfg.OutputFile != "" {
@@ -160,6 +164,9 @@ func run(ctx context.Context, cfg *Config) error {
 		opts := []probe.NetworkCollectorOption{}
 		if cfg.NetworkInterface != "" {
 			opts = append(opts, probe.WithInterface(cfg.NetworkInterface))
+		}
+		if cfg.CollectInterval > 0 {
+			opts = append(opts, probe.WithPollInterval(cfg.CollectInterval))
 		}
 		if cfg.CollectorType != "auto" {
 			switch cfg.CollectorType {
@@ -200,8 +207,19 @@ func run(ctx context.Context, cfg *Config) error {
 	return collectLoop(ctx, cfg, serviceCollector, networkCollector, output)
 }
 
+func applyCollectInterval(cfg *Config) {
+	if cfg.CollectInterval > 0 {
+		cfg.ServiceInterval = cfg.CollectInterval
+		cfg.NetworkInterval = cfg.CollectInterval
+	}
+}
+
 func collectOnce(cfg *Config, serviceCollector *probe.DefaultServiceCollector, networkCollector *probe.NetworkTrafficCollector, output *os.File) error {
 	timestamp := time.Now().UnixNano()
+
+	if useSharedTicker(cfg, serviceCollector, networkCollector) {
+		time.Sleep(cfg.CollectInterval)
+	}
 
 	// Collect services
 	if cfg.CollectServices && serviceCollector != nil {
@@ -230,11 +248,13 @@ func collectOnce(cfg *Config, serviceCollector *probe.DefaultServiceCollector, n
 
 	// Collect network traffic
 	if cfg.CollectNetwork && networkCollector != nil {
-		// Wait a bit for some traffic to accumulate
-		if cfg.Verbose {
-			log.Printf("Waiting for network traffic collection...")
+		if cfg.CollectInterval == 0 {
+			// Wait a bit for some traffic to accumulate
+			if cfg.Verbose {
+				log.Printf("Waiting for network traffic collection...")
+			}
+			time.Sleep(cfg.NetworkInterval)
 		}
-		time.Sleep(cfg.NetworkInterval)
 
 		traffic, err := networkCollector.GetStats()
 		if err != nil {
@@ -257,8 +277,12 @@ func collectLoop(ctx context.Context, cfg *Config, serviceCollector *probe.Defau
 	// Create tickers for collection intervals
 	var serviceTicker *time.Ticker
 	var networkTicker *time.Ticker
+	var sharedTicker *time.Ticker
 
-	if cfg.CollectServices && serviceCollector != nil {
+	if useSharedTicker(cfg, serviceCollector, networkCollector) {
+		sharedTicker = time.NewTicker(cfg.CollectInterval)
+		defer sharedTicker.Stop()
+	} else if cfg.CollectServices && serviceCollector != nil {
 		serviceTicker = time.NewTicker(cfg.ServiceInterval)
 		defer serviceTicker.Stop()
 
@@ -268,7 +292,7 @@ func collectLoop(ctx context.Context, cfg *Config, serviceCollector *probe.Defau
 		}
 	}
 
-	if cfg.CollectNetwork && networkCollector != nil {
+	if cfg.CollectNetwork && cfg.CollectInterval == 0 && networkCollector != nil {
 		networkTicker = time.NewTicker(cfg.NetworkInterval)
 		defer networkTicker.Stop()
 	}
@@ -278,6 +302,19 @@ func collectLoop(ctx context.Context, cfg *Config, serviceCollector *probe.Defau
 		case <-ctx.Done():
 			log.Println("Shutting down collection loop...")
 			return nil
+
+		case <-func() <-chan time.Time {
+			if sharedTicker != nil {
+				return sharedTicker.C
+			}
+			return nil
+		}():
+			if err := collectAndOutputServices(cfg, serviceCollector, output); err != nil {
+				log.Printf("Warning: service collection failed: %v", err)
+			}
+			if err := collectAndOutputNetwork(cfg, networkCollector, output); err != nil {
+				log.Printf("Warning: network collection failed: %v", err)
+			}
 
 		case <-func() <-chan time.Time {
 			if serviceTicker != nil {
@@ -300,6 +337,10 @@ func collectLoop(ctx context.Context, cfg *Config, serviceCollector *probe.Defau
 			}
 		}
 	}
+}
+
+func useSharedTicker(cfg *Config, serviceCollector *probe.DefaultServiceCollector, networkCollector *probe.NetworkTrafficCollector) bool {
+	return cfg.CollectServices && cfg.CollectNetwork && cfg.CollectInterval > 0 && serviceCollector != nil && networkCollector != nil
 }
 
 func collectAndOutputServices(cfg *Config, serviceCollector *probe.DefaultServiceCollector, output *os.File) error {

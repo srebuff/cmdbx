@@ -31,6 +31,9 @@ type GoPacketCollector struct {
 	blockSize   int
 	numBlocks   int
 	pollTimeout time.Duration
+	pollInterval time.Duration
+
+	stats map[FlowKey]*NetworkTraffic
 }
 
 // GoPacketCollectorOption is a functional option for GoPacketCollector
@@ -82,6 +85,12 @@ func NewGoPacketCollector(parent *NetworkTrafficCollector, ifaceName string, opt
 		blockSize:   4096 * 128, // 512KB blocks
 		numBlocks:   128,        // Total ~64MB ring buffer
 		pollTimeout: 100 * time.Millisecond,
+		stats:       make(map[FlowKey]*NetworkTraffic),
+	}
+	if parent != nil && parent.pollInterval > 0 {
+		c.pollInterval = parent.pollInterval
+	} else {
+		c.pollInterval = 5 * time.Second
 	}
 
 	// Apply options
@@ -120,6 +129,7 @@ func (c *GoPacketCollector) Start() error {
 
 	// Start packet capture goroutine
 	go c.captureLoop()
+	go c.flushLoop()
 
 	return nil
 }
@@ -175,12 +185,44 @@ func (c *GoPacketCollector) captureLoop() {
 	}
 }
 
-// processPacket extracts flow information and records traffic
-func (c *GoPacketCollector) processPacket(packet gopacket.Packet) {
+// flushLoop periodically flushes interval stats to the parent collector.
+func (c *GoPacketCollector) flushLoop() {
+	ticker := time.NewTicker(c.pollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-c.stopCh:
+			return
+		case <-ticker.C:
+			c.flushStats()
+		}
+	}
+}
+
+// flushStats snapshots current interval stats and writes them to the parent.
+func (c *GoPacketCollector) flushStats() {
 	c.mu.Lock()
-	c.packetCount++
+	snapshot := c.stats
+	c.stats = make(map[FlowKey]*NetworkTraffic, len(snapshot))
 	c.mu.Unlock()
 
+	c.parent.ClearStats()
+	for _, traffic := range snapshot {
+		c.parent.RecordTraffic(
+			traffic.SrcIP,
+			traffic.SrcPort,
+			traffic.DstIP,
+			traffic.DstPort,
+			traffic.Protocol,
+			traffic.Packets,
+			traffic.Bytes,
+		)
+	}
+}
+
+// processPacket extracts flow information and records traffic
+func (c *GoPacketCollector) processPacket(packet gopacket.Packet) {
 	// Get network layer (IP)
 	netLayer := packet.NetworkLayer()
 	if netLayer == nil {
@@ -231,7 +273,32 @@ func (c *GoPacketCollector) processPacket(packet gopacket.Packet) {
 
 	// Record traffic
 	packetLen := uint64(len(packet.Data()))
-	c.parent.RecordTraffic(srcIP, srcPort, dstIP, dstPort, protocol, 1, packetLen)
+
+	key := FlowKey{
+		SrcIP:    srcIP,
+		SrcPort:  srcPort,
+		DstIP:    dstIP,
+		DstPort:  dstPort,
+		Protocol: protocol,
+	}
+
+	c.mu.Lock()
+	c.packetCount++
+	if existing, ok := c.stats[key]; ok {
+		existing.Packets++
+		existing.Bytes += packetLen
+	} else {
+		c.stats[key] = &NetworkTraffic{
+			SrcIP:    srcIP,
+			SrcPort:  srcPort,
+			DstIP:    dstIP,
+			DstPort:  dstPort,
+			Protocol: protocol,
+			Packets:  1,
+			Bytes:    packetLen,
+		}
+	}
+	c.mu.Unlock()
 }
 
 // Stop stops the packet capture
@@ -250,6 +317,7 @@ func (c *GoPacketCollector) Stop() error {
 	// Wait for capture loop to finish (with timeout)
 	select {
 	case <-c.stoppedCh:
+		c.flushStats()
 	case <-time.After(5 * time.Second):
 		return fmt.Errorf("timeout waiting for capture loop to stop")
 	}

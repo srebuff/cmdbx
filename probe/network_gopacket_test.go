@@ -111,6 +111,31 @@ func TestGoPacketCollectorDefaultValues(t *testing.T) {
 	if collector.pollTimeout != 100*time.Millisecond {
 		t.Errorf("default pollTimeout = %s, want %s", collector.pollTimeout, 100*time.Millisecond)
 	}
+	if collector.pollInterval != 5*time.Second {
+		t.Errorf("default pollInterval = %s, want %s", collector.pollInterval, 5*time.Second)
+	}
+}
+
+func TestGoPacketCollectorPollIntervalFromParent(t *testing.T) {
+	parent, err := NewNetworkTrafficCollector(WithPollInterval(2 * time.Second))
+	if err != nil {
+		t.Fatalf("NewNetworkTrafficCollector() error = %v", err)
+	}
+
+	// Get a valid interface
+	ifaces, err := GetAvailableInterfaces()
+	if err != nil || len(ifaces) == 0 {
+		t.Skip("No network interfaces available")
+	}
+
+	collector, err := NewGoPacketCollector(parent, ifaces[0])
+	if err != nil {
+		t.Fatalf("NewGoPacketCollector() error = %v", err)
+	}
+
+	if collector.pollInterval != 2*time.Second {
+		t.Errorf("pollInterval = %s, want %s", collector.pollInterval, 2*time.Second)
+	}
 }
 
 func TestGoPacketCollectorIsRunningInitially(t *testing.T) {
