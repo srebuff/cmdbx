@@ -27,10 +27,10 @@ type GoPacketCollector struct {
 	running     bool
 
 	// Configuration
-	frameSize   int
-	blockSize   int
-	numBlocks   int
-	pollTimeout time.Duration
+	frameSize    int
+	blockSize    int
+	numBlocks    int
+	pollTimeout  time.Duration
 	pollInterval time.Duration
 
 	stats map[FlowKey]*NetworkTraffic
