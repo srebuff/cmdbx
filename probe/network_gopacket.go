@@ -27,9 +27,9 @@ type GoPacketCollector struct {
 	running     bool
 
 	// Configuration
-	frameSize int
-	blockSize int
-	numBlocks int
+	frameSize   int
+	blockSize   int
+	numBlocks   int
 	pollTimeout time.Duration
 }
 
@@ -78,9 +78,9 @@ func NewGoPacketCollector(parent *NetworkTrafficCollector, ifaceName string, opt
 		stoppedCh: make(chan struct{}),
 		parent:    parent,
 		// Default values matching gopacketdemo
-		frameSize: 4096,
-		blockSize: 4096 * 128, // 512KB blocks
-		numBlocks: 128,        // Total ~64MB ring buffer
+		frameSize:   4096,
+		blockSize:   4096 * 128, // 512KB blocks
+		numBlocks:   128,        // Total ~64MB ring buffer
 		pollTimeout: 100 * time.Millisecond,
 	}
 
