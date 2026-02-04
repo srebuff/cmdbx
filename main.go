@@ -99,7 +99,7 @@ func parseFlags() *Config {
 	flag.IntVar(&cfg.TopN, "top", 0, "Show only top N services (0 = all)")
 
 	// Network collection options
-	flag.BoolVar(&cfg.CollectNetwork, "network", false, "Collect network traffic")
+	flag.BoolVar(&cfg.CollectNetwork, "network", true, "Collect network traffic")
 	flag.DurationVar(&cfg.NetworkInterval, "network-interval", 30*time.Second, "Network stats collection interval")
 	flag.StringVar(&cfg.NetworkInterface, "interface", "", "Network interface (default: auto-detect)")
 	flag.StringVar(&cfg.CollectorType, "collector", "auto", "Network collector: auto, ebpf, gopacket")

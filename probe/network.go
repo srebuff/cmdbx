@@ -173,32 +173,36 @@ func (c *NetworkTrafficCollector) startGoPacket() error {
 // Stop stops the collection
 func (c *NetworkTrafficCollector) Stop() error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if !c.running {
+		c.mu.Unlock()
 		return nil
 	}
 
-	// Stop eBPF collector if running
-	if c.ebpfCollector != nil {
-		if err := c.ebpfCollector.Stop(); err != nil {
+	ebpfCollector := c.ebpfCollector
+	gopacketCollector := c.gopacketCollector
+	stopCh := c.stopCh
+	c.ebpfCollector = nil
+	c.gopacketCollector = nil
+	c.stopCh = nil
+	c.running = false
+	c.mu.Unlock()
+
+	// Stop collectors outside the lock to avoid deadlocks.
+	if ebpfCollector != nil {
+		if err := ebpfCollector.Stop(); err != nil {
 			return fmt.Errorf("failed to stop eBPF collector: %w", err)
 		}
-		c.ebpfCollector = nil
 	}
-
-	// Stop gopacket collector if running
-	if c.gopacketCollector != nil {
-		if err := c.gopacketCollector.Stop(); err != nil {
+	if gopacketCollector != nil {
+		if err := gopacketCollector.Stop(); err != nil {
 			return fmt.Errorf("failed to stop gopacket collector: %w", err)
 		}
-		c.gopacketCollector = nil
 	}
 
-	if c.stopCh != nil {
-		close(c.stopCh)
+	if stopCh != nil {
+		close(stopCh)
 	}
-	c.running = false
+
 	return nil
 }
 

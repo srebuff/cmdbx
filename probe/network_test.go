@@ -155,6 +155,39 @@ func TestNetworkTrafficCollectorIsRunning(t *testing.T) {
 	}
 }
 
+func TestNetworkTrafficCollectorStopDoesNotDeadlockOnGoPacket(t *testing.T) {
+	parent, err := NewNetworkTrafficCollector(
+		WithCollectorType(CollectorTypeGoPacket),
+	)
+	if err != nil {
+		t.Fatalf("NewNetworkTrafficCollector() error = %v", err)
+	}
+
+	gp := &GoPacketCollector{
+		parent:    parent,
+		stopCh:    make(chan struct{}),
+		stoppedCh: make(chan struct{}),
+		running:   true,
+		stats:     make(map[FlowKey]*NetworkTraffic),
+	}
+	close(gp.stoppedCh)
+
+	parent.gopacketCollector = gp
+	parent.running = true
+
+	done := make(chan struct{})
+	go func() {
+		_ = parent.Stop()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("Stop() appears to be deadlocked")
+	}
+}
+
 func TestNetworkTrafficStruct(t *testing.T) {
 	traffic := NetworkTraffic{
 		SrcIP:     "192.168.1.100",
